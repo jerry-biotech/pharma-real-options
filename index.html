@@ -236,6 +236,15 @@
     </div>
     <div class="form-row">
       <div class="form-group">
+        <label style="color:var(--milestone);">签约首付款 — 收入 (M$)</label>
+        <input type="number" id="upfrontIncome" value="8" min="0" step="1" style="border-color:#7c3aed40;">
+      </div>
+      <div class="form-group" style="align-self:end;">
+        <div class="info-tip" style="margin:0;padding:8px 12px;font-size:11px;">签约时从合作方收到的首付款，计入第0年现金流</div>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
         <label>无风险利率 (%)</label>
         <input type="number" id="riskFreeRate" value="4.0" min="0" max="20" step="0.5">
       </div>
@@ -321,6 +330,12 @@
   <h2><span class="icon" style="background:#dbeafe;color:#1e40af;">📅</span> 逐年现金流时间线</h2>
   <div class="info-tip">
     展示从签约（Year 0）到商业化销售期间，每一年的名义现金流、折现因子和折现后现金流。投资成本在阶段开始时支出，里程碑付款在阶段成功完成时收取。商业化收入按WACC折现，开发期现金流按无风险利率折现。
+  </div>
+  <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+    <button class="btn btn-primary" onclick="exportToExcel()" style="display:flex;align-items:center;gap:6px;padding:8px 20px;font-size:13px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      导出 Excel
+    </button>
   </div>
   <div style="overflow-x:auto;">
     <table id="cashflowTable">
@@ -426,6 +441,7 @@ function getParams() {
     salesYears: +document.getElementById('salesYears').value,
     margin: +document.getElementById('margin').value / 100,
     upfront: +document.getElementById('upfront').value,
+    upfrontIncome: +document.getElementById('upfrontIncome').value,
     rf: +document.getElementById('riskFreeRate').value / 100,
     wacc: +document.getElementById('wacc').value / 100,
     vol: +document.getElementById('volatility').value / 100,
@@ -481,7 +497,7 @@ function getCommercialCashflows(params) {
  * the probability-weighted branch (only received if stage succeeds).
  */
 function calcRealOption(params) {
-  const { phases, rf, upfront } = params;
+  const { phases, rf, upfront, upfrontIncome } = params;
   const TV = calcTerminalValue(params);
 
   const n = phases.length;
@@ -510,8 +526,8 @@ function calcRealOption(params) {
     stageDecisions[i] = (continuationValue - cost > 0) ? 'invest' : 'abandon';
   }
 
-  // ROV = Stage 0 option value minus upfront payment
-  const rov = stageValues[0] - upfront;
+  // ROV = Stage 0 option value - upfront cost + upfront income (both at t=0, no discounting)
+  const rov = stageValues[0] - upfront + upfrontIncome;
 
   return { rov, stageValues, stageDecisions, stageContinuations, TV };
 }
@@ -521,12 +537,12 @@ function calcRealOption(params) {
  * Standard rNPV: each cash flow weighted by cumulative probability of reaching that point
  */
 function calcRNPV(params) {
-  const { phases, rf, wacc, upfront } = params;
+  const { phases, rf, wacc, upfront, upfrontIncome } = params;
   const TV = calcTerminalValue(params);
 
   let cumProb = 1;
   let cumTime = 0;
-  let npv = -upfront; // upfront paid at t=0
+  let npv = -upfront + upfrontIncome; // net upfront at t=0
 
   for (let i = 0; i < phases.length; i++) {
     // Cost paid at the START of this phase (cumTime is end of previous phase)
@@ -553,15 +569,17 @@ function calcRNPV(params) {
 // ============================================================
 
 function buildYearlyCashflows(params) {
-  const { phases, rf, wacc, upfront } = params;
+  const { phases, rf, wacc, upfront, upfrontIncome } = params;
   const rows = [];
 
-  // Year 0: upfront payment
+  // Year 0: upfront cost + upfront income
+  const netUpfront = -upfront + upfrontIncome;
   rows.push({
     year: 0, time: 0, phase: '签约',
-    cost: upfront, milestone: 0, commercial: 0,
-    net: -upfront,
-    rate: 0, df: 1, pv: -upfront
+    cost: upfront, milestone: upfrontIncome, commercial: 0,
+    net: netUpfront,
+    rate: 0, df: 1, pv: netUpfront,
+    isMilestone: upfrontIncome > 0
   });
 
   let cumTime = 0;
@@ -648,7 +666,7 @@ function fmtM2(v) { return (v >= 0 ? '+' : '') + '$' + v.toFixed(1) + 'M'; }
 function renderMetrics(params, result, rnpv) {
   const cumProb = params.phases.reduce((a, ph) => a * ph.p, 1);
   const totalCost = params.upfront + params.phases.reduce((a, ph) => a + ph.cost, 0);
-  const totalMilestones = params.phases.reduce((a, ph) => a + ph.milestone, 0);
+  const totalMilestones = params.upfrontIncome + params.phases.reduce((a, ph) => a + ph.milestone, 0);
   const totalTime = params.phases.reduce((a, ph) => a + ph.t, 0);
 
   document.getElementById('metricsRow').innerHTML = `
@@ -886,7 +904,7 @@ function renderScenarios(params) {
     chartData.push({ ...s, rov, rnpv });
 
     const cumProb = sp.phases.reduce((a, ph) => a * ph.p, 1);
-    const totalMs = sp.phases.reduce((a, ph) => a + ph.milestone, 0);
+    const totalMs = (sp.upfrontIncome||0) + sp.phases.reduce((a, ph) => a + ph.milestone, 0);
 
     cardsHtml += `
       <div style="background:${s.bg};border-radius:12px;padding:20px;text-align:center;border:2px solid ${s.color}20;">
@@ -956,8 +974,126 @@ function runModel() {
   document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+// ============================================================
+// EXPORT TO EXCEL (SheetJS)
+// ============================================================
+
+function exportToExcel() {
+  const params = getParams();
+  const rows = buildYearlyCashflows(params);
+  const result = calcRealOption(params);
+  const rnpv = calcRNPV(params);
+
+  // -- Sheet 1: 逐年现金流 --
+  const cfHeader = ['年份', '阶段', '投资成本 (M$)', '里程碑/首付收入 (M$)', '商业化收入 (M$)', '净现金流 (M$)', '折现率', '折现因子', '折现后净现金流 (M$)', '累计折现值 (M$)'];
+  const cfData = [cfHeader];
+  let cumPV = 0;
+  rows.forEach(r => {
+    cumPV += r.pv;
+    const rateName = r.rate === 0 ? '—' : (r.isCommercial ? 'WACC ' : 'Rf ') + (r.rate*100).toFixed(1) + '%';
+    cfData.push([
+      'Y' + r.time.toFixed(1),
+      r.phase,
+      r.cost > 0 ? -r.cost : 0,
+      r.milestone > 0 ? r.milestone : 0,
+      r.commercial > 0 ? r.commercial : 0,
+      r.net,
+      rateName,
+      r.df,
+      r.pv,
+      cumPV
+    ]);
+  });
+  // Totals row
+  const totalCost = rows.reduce((a, r) => a + r.cost, 0);
+  const totalMs = rows.reduce((a, r) => a + r.milestone, 0);
+  const totalComm = rows.reduce((a, r) => a + r.commercial, 0);
+  const totalNet = rows.reduce((a, r) => a + r.net, 0);
+  const totalPV = rows.reduce((a, r) => a + r.pv, 0);
+  cfData.push(['合计', '', -totalCost, totalMs, totalComm, totalNet, '', '', totalPV, '']);
+
+  // -- Sheet 2: 模型参数 --
+  const paramData = [
+    ['药物License交易实物期权模型 — 参数汇总'],
+    [],
+    ['临床阶段参数'],
+    ['阶段', '成功概率', '投资成本 (M$)', '里程碑收入 (M$)', '持续时间 (年)'],
+  ];
+  params.phases.forEach(ph => {
+    paramData.push([ph.name, (ph.p*100).toFixed(0)+'%', ph.cost, ph.milestone, ph.t]);
+  });
+  paramData.push([], ['市场与财务参数']);
+  paramData.push(['签约首付款支出', params.upfront + ' M$']);
+  paramData.push(['签约首付款收入', params.upfrontIncome + ' M$']);
+  paramData.push(['峰值年销售额', params.peakSales + ' M$']);
+  paramData.push(['销售年限', params.salesYears + ' 年']);
+  paramData.push(['销售利润率', (params.margin*100).toFixed(0) + '%']);
+  paramData.push(['无风险利率', (params.rf*100).toFixed(1) + '%']);
+  paramData.push(['WACC', (params.wacc*100).toFixed(1) + '%']);
+  paramData.push(['波动率 σ', (params.vol*100).toFixed(0) + '%']);
+  paramData.push(['销售曲线', params.curve]);
+
+  // -- Sheet 3: 估值结果 --
+  const resultData = [
+    ['估值结果汇总'],
+    [],
+    ['实物期权价值 (ROV)', result.rov],
+    ['风险调整净现值 (rNPV)', rnpv],
+    ['灵活性溢价', result.rov - rnpv],
+    ['终端商业价值', result.TV],
+    ['累计成功概率', (params.phases.reduce((a,ph)=>a*ph.p,1)*100).toFixed(1)+'%'],
+    [],
+    ['逐阶段期权价值'],
+    ['阶段', '投资成本', '里程碑收入', '成功概率', '期权价值', '决策'],
+  ];
+  result.stageValues.slice(0, -1).forEach((v, i) => {
+    resultData.push([
+      params.phases[i].name,
+      params.phases[i].cost,
+      params.phases[i].milestone,
+      (params.phases[i].p*100).toFixed(0)+'%',
+      v,
+      result.stageDecisions[i] === 'invest' ? '继续投资' : '放弃'
+    ]);
+  });
+
+  // Build workbook
+  const wb = XLSX.utils.book_new();
+  const ws1 = XLSX.utils.aoa_to_sheet(cfData);
+  const ws2 = XLSX.utils.aoa_to_sheet(paramData);
+  const ws3 = XLSX.utils.aoa_to_sheet(resultData);
+
+  // Column widths
+  ws1['!cols'] = [{wch:8},{wch:16},{wch:14},{wch:18},{wch:14},{wch:14},{wch:12},{wch:10},{wch:16},{wch:14}];
+  ws2['!cols'] = [{wch:20},{wch:14},{wch:14},{wch:14},{wch:12}];
+  ws3['!cols'] = [{wch:20},{wch:14},{wch:14},{wch:12},{wch:14},{wch:10}];
+
+  // Number formats for currency columns in sheet 1
+  const numFmt = '#,##0.0';
+  for (let r = 1; r < cfData.length; r++) {
+    for (let c of [2,3,4,5,8,9]) {
+      const cell = XLSX.utils.encode_cell({r:r, c:c});
+      if (ws1[cell] && typeof ws1[cell].v === 'number') {
+        ws1[cell].z = numFmt;
+      }
+    }
+    // Discount factor with 4 decimals
+    const dfCell = XLSX.utils.encode_cell({r:r, c:7});
+    if (ws1[dfCell] && typeof ws1[dfCell].v === 'number') {
+      ws1[dfCell].z = '0.0000';
+    }
+  }
+
+  XLSX.utils.book_append_sheet(wb, ws1, '逐年现金流');
+  XLSX.utils.book_append_sheet(wb, ws2, '模型参数');
+  XLSX.utils.book_append_sheet(wb, ws3, '估值结果');
+
+  XLSX.writeFile(wb, '药物License实物期权_现金流分析.xlsx');
+}
+
 // Auto-run on load
 window.addEventListener('DOMContentLoaded', runModel);
 </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </body>
 </html>
