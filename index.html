@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>药物License交易 — 实物期权估值模型</title>
+<style>
+  :root {
+    --primary: #1a56db;
+    --primary-light: #e8eefb;
+    --success: #059669;
+    --warning: #d97706;
+    --danger: #dc2626;
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --text: #1e293b;
+    --text-light: #64748b;
+    --border: #e2e8f0;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+    --shadow-lg: 0 4px 12px rgba(0,0,0,0.1);
+    --milestone: #7c3aed;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+
+  .header { background: linear-gradient(135deg, #1e3a5f 0%, #1a56db 100%); color: #fff; padding: 32px 0; text-align: center; }
+  .header h1 { font-size: 28px; font-weight: 700; margin-bottom: 6px; }
+  .header p { opacity: 0.85; font-size: 15px; }
+
+  .container { max-width: 1360px; margin: 0 auto; padding: 24px 20px; }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+  @media(max-width:960px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+  .card { background: var(--card); border-radius: 12px; border: 1px solid var(--border); box-shadow: var(--shadow); padding: 24px; margin-bottom: 20px; }
+  .card h2 { font-size: 17px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+  .card h2 .icon { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+
+  .section-title { font-size: 20px; font-weight: 700; margin: 32px 0 16px; padding-left: 12px; border-left: 4px solid var(--primary); }
+
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .form-group { display: flex; flex-direction: column; }
+  .form-group label { font-size: 13px; font-weight: 500; color: var(--text-light); margin-bottom: 4px; }
+  .form-group input, .form-group select {
+    padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px;
+    transition: border-color 0.2s; outline: none;
+  }
+  .form-group input:focus, .form-group select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(26,86,219,0.1); }
+
+  .btn { padding: 10px 24px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover { background: #1544b5; transform: translateY(-1px); box-shadow: var(--shadow-lg); }
+
+  .result-box { background: linear-gradient(135deg, #f0f9ff, #e8eefb); border: 2px solid var(--primary); border-radius: 12px; padding: 24px; text-align: center; margin: 20px 0; }
+  .result-box .value { font-size: 36px; font-weight: 800; color: var(--primary); }
+  .result-box .label { font-size: 14px; color: var(--text-light); margin-top: 4px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { background: #f8fafc; font-weight: 600; text-align: left; padding: 10px 12px; border-bottom: 2px solid var(--border); }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  tr:hover td { background: #fafbfd; }
+  .text-right { text-align: right; }
+  .text-center { text-align: center; }
+
+  .phase-tag { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+  .phase-1 { background: #dbeafe; color: #1e40af; }
+  .phase-2 { background: #fef3c7; color: #92400e; }
+  .phase-3 { background: #d1fae5; color: #065f46; }
+  .phase-fda { background: #ede9fe; color: #5b21b6; }
+
+  .tree-container { overflow-x: auto; padding: 20px 0; }
+  .tree-svg text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+
+  .bar-chart { display: flex; align-items: flex-end; gap: 24px; justify-content: center; height: 220px; padding: 20px; }
+  .bar-group { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .bar { width: 60px; border-radius: 6px 6px 0 0; transition: height 0.6s ease; position: relative; min-height: 4px; }
+  .bar-label { font-size: 12px; font-weight: 600; color: var(--text-light); }
+  .bar-value { font-size: 13px; font-weight: 700; }
+
+  .info-tip { font-size: 12px; color: var(--text-light); background: #f8fafc; padding: 12px 16px; border-radius: 8px; border-left: 3px solid var(--primary); margin: 12px 0; line-height: 1.7; }
+
+  .metrics-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin: 16px 0; }
+  .metric { text-align: center; padding: 16px 8px; background: #f8fafc; border-radius: 10px; }
+  .metric .num { font-size: 22px; font-weight: 800; }
+  .metric .desc { font-size: 12px; color: var(--text-light); margin-top: 4px; }
+  @media(max-width:700px) { .metrics-row { grid-template-columns: 1fr 1fr; } }
+
+  .hidden { display: none; }
+
+  .footer { text-align: center; padding: 24px; color: var(--text-light); font-size: 13px; border-top: 1px solid var(--border); margin-top: 40px; }
+
+  .tbl-input { width: 72px; text-align: center; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; }
+  .tbl-input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(26,86,219,0.1); outline: none; }
+  .tbl-input-wide { width: 82px; }
+
+  .cf-positive { color: var(--success); font-weight: 600; }
+  .cf-negative { color: var(--danger); font-weight: 600; }
+  .cf-neutral { color: var(--text-light); }
+
+  .timeline-bar { display: flex; align-items: center; gap: 2px; }
+  .tl-seg { height: 20px; border-radius: 3px; min-width: 2px; transition: width 0.4s; }
+
+  /* ===== Login Overlay ===== */
+  #loginOverlay {
+    position: fixed; inset: 0; z-index: 9999;
+    background: linear-gradient(135deg, #1e3a5f 0%, #1a56db 60%, #7c3aed 100%);
+    display: flex; align-items: center; justify-content: center;
+    transition: opacity 0.5s, visibility 0.5s;
+  }
+  #loginOverlay.fade-out { opacity: 0; visibility: hidden; pointer-events: none; }
+  .login-card {
+    background: #fff; border-radius: 16px; padding: 40px 36px; width: 380px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3); text-align: center;
+  }
+  .login-card .lock-icon { font-size: 40px; margin-bottom: 12px; }
+  .login-card h2 { font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 6px; }
+  .login-card p { font-size: 13px; color: #64748b; margin-bottom: 24px; }
+  .login-card input[type="password"] {
+    width: 100%; padding: 12px 16px; border: 2px solid #e2e8f0; border-radius: 10px;
+    font-size: 15px; outline: none; transition: border-color 0.2s;
+  }
+  .login-card input[type="password"]:focus { border-color: #1a56db; box-shadow: 0 0 0 3px rgba(26,86,219,0.15); }
+  .login-card .login-btn {
+    width: 100%; margin-top: 16px; padding: 12px; border: none; border-radius: 10px;
+    background: linear-gradient(135deg, #1a56db, #7c3aed); color: #fff;
+    font-size: 15px; font-weight: 600; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .login-card .login-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(26,86,219,0.35); }
+  .login-card .login-btn:active { transform: translateY(0); }
+  .login-error { color: #dc2626; font-size: 13px; margin-top: 12px; min-height: 20px; font-weight: 500; }
+  .login-card .shake { animation: shake 0.4s ease; }
+  @keyframes shake {
+    0%,100% { transform: translateX(0); }
+    20%,60% { transform: translateX(-8px); }
+    40%,80% { transform: translateX(8px); }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== Login Overlay ===== -->
+<div id="loginOverlay">
+  <div class="login-card" id="loginCard">
+    <div class="lock-icon">🔒</div>
+    <h2>药物License交易估值模型</h2>
+    <p>请输入访问密码以继续</p>
+    <input type="password" id="pwdInput" placeholder="请输入密码" autocomplete="off" autofocus>
+    <button class="login-btn" id="loginBtn" onclick="tryLogin()">登 录</button>
+    <div class="login-error" id="loginError"></div>
+  </div>
+</div>
+
+<div class="header">
+  <h1>药物License交易 · 实物期权估值模型</h1>
+  <p>基于二叉树模型的多阶段临床开发期权定价 | 含里程碑付款与逐年现金流折现</p>
+</div>
+
+<div class="container">
+
+<!-- ==================== 参数输入 ==================== -->
+<div class="section-title">参数设置</div>
+
+<div class="grid-2">
+  <!-- 临床阶段参数 -->
+  <div class="card">
+    <h2><span class="icon" style="background:#dbeafe;color:#1e40af;">📊</span> 临床阶段参数</h2>
+    <div class="info-tip">
+      <strong>投资成本</strong>：进入该阶段需支付的研发费用。<strong>里程碑收入</strong>：该阶段成功后从合作方收到的里程碑付款。现金流按各阶段实际发生时点逐年折现。
+    </div>
+    <table id="phaseTable">
+      <thead>
+        <tr>
+          <th>阶段</th>
+          <th class="text-center">成功概率</th>
+          <th class="text-center">投资成本<br><span style="font-weight:400;font-size:11px;">(M$)</span></th>
+          <th class="text-center">里程碑收入<br><span style="font-weight:400;font-size:11px;color:var(--milestone);">(M$)</span></th>
+          <th class="text-center">持续时间<br><span style="font-weight:400;font-size:11px;">(年)</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="phase-tag phase-1">临床 I 期</span></td>
+          <td class="text-center"><input type="number" class="tbl-input" id="p1" value="63" min="0" max="100" step="1">%</td>
+          <td class="text-center"><input type="number" class="tbl-input" id="c1" value="15" min="0" step="1"></td>
+          <td class="text-center"><input type="number" class="tbl-input" id="m1" value="5" min="0" step="1" style="border-color:#7c3aed40;"></td>
+          <td class="text-center"><input type="number" class="tbl-input" id="t1" value="1.5" min="0.5" step="0.5"></td>
+        </tr>
+        <tr>
+          <td><span class="phase-tag phase-2">临床 II 期</span></td>
+          <td class="text-center"><input type="number" class="tbl-input" id="p2" value="31" min="0" max="100" step="1">%</td>
+          <td class="text-center"><input type="number" class="tbl-input" id="c2" value="40" min="0" step="1"></td>
+          <td class="text-center"><input type="number" class="tbl-input" id="m2" value="15" min="0" step="1" style="border-color:#7c3aed40;"></td>
+          <td class="text-center"><input type="number" class="tbl-input" id="t2" value="2.5" min="0.5" step="0.5"></td>
+        </tr>
+        <tr>
+          <td><span class="phase-tag phase-3">临床 III 期</span></td>
+          <td class="text-center"><input type="number" class="tbl-input" id="p3" value="58" min="0" max="100" step="1">%</td>
+          <td class="text-center"><input type="number" class="tbl-input" id="c3" value="120" min="0" step="1"></td>
+          <td class="text-center"><input type="number" class="tbl-input" id="m3" value="40" min="0" step="1" style="border-color:#7c3aed40;"></td>
+          <td class="text-center"><input type="number" class="tbl-input" id="t3" value="3.0" min="0.5" step="0.5"></td>
+        </tr>
+        <tr>
+          <td><span class="phase-tag phase-fda">FDA 审批</span></td>
+          <td class="text-center"><input type="number" class="tbl-input" id="p4" value="85" min="0" max="100" step="1">%</td>
+          <td class="text-center"><input type="number" class="tbl-input" id="c4" value="30" min="0" step="1"></td>
+          <td class="text-center"><input type="number" class="tbl-input" id="m4" value="80" min="0" step="1" style="border-color:#7c3aed40;"></td>
+          <td class="text-center"><input type="number" class="tbl-input" id="t4" value="1.5" min="0.5" step="0.5"></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 市场与财务参数 -->
+  <div class="card">
+    <h2><span class="icon" style="background:#d1fae5;color:#065f46;">💰</span> 市场与财务参数</h2>
+    <div class="form-row">
+      <div class="form-group">
+        <label>药物上市后峰值年销售额 (M$)</label>
+        <input type="number" id="peakSales" value="800" min="0" step="50">
+      </div>
+      <div class="form-group">
+        <label>专利保护期/销售年限 (年)</label>
+        <input type="number" id="salesYears" value="10" min="1" step="1">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>销售利润率 (%)</label>
+        <input type="number" id="margin" value="30" min="0" max="100" step="1">
+      </div>
+      <div class="form-group">
+        <label>License 签约首付款 — 支出 (M$)</label>
+        <input type="number" id="upfront" value="10" min="0" step="1">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>无风险利率 (%)</label>
+        <input type="number" id="riskFreeRate" value="4.0" min="0" max="20" step="0.5">
+      </div>
+      <div class="form-group">
+        <label>风险调整折现率 WACC (%)</label>
+        <input type="number" id="wacc" value="12" min="0" max="30" step="0.5">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>药物价值波动率 σ (%)</label>
+        <input type="number" id="volatility" value="40" min="5" max="100" step="5">
+      </div>
+      <div class="form-group">
+        <label>销售增长曲线类型</label>
+        <select id="growthCurve">
+          <option value="linear">线性增长</option>
+          <option value="scurve" selected>S型曲线</option>
+          <option value="rapid">快速达峰</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-top:16px;text-align:center;">
+      <button class="btn btn-primary" onclick="runModel()" style="width:100%;">运行模型计算</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 核心结果 ==================== -->
+<div id="resultsSection" class="hidden">
+
+<div class="section-title">估值结果</div>
+
+<!-- 汇总指标 -->
+<div class="metrics-row" id="metricsRow"></div>
+
+<div class="grid-2">
+  <div class="result-box">
+    <div class="label">实物期权价值 (Real Option Value)</div>
+    <div class="value" id="rovValue">—</div>
+    <div class="label" style="margin-top:8px;" id="rovSub"></div>
+  </div>
+  <div class="result-box" style="border-color:var(--success);background:linear-gradient(135deg,#f0fdf4,#d1fae5);">
+    <div class="label">传统 rNPV 对比</div>
+    <div class="value" style="color:var(--success);" id="rnpvValue">—</div>
+    <div class="label" style="margin-top:8px;" id="rnpvSub"></div>
+  </div>
+</div>
+
+<!-- 决策树可视化 -->
+<div class="card">
+  <h2><span class="icon" style="background:#fef3c7;color:#92400e;">🌳</span> 二叉树决策结构</h2>
+  <div class="info-tip">
+    每个节点显示期权价值（已含里程碑收入）。绿色连线 = 成功路径，红色虚线 = 失败放弃。节点间标注成功概率、投资成本及里程碑收入。
+  </div>
+  <div class="tree-container" id="treeContainer"></div>
+</div>
+
+<!-- 逐阶段分解 -->
+<div class="card">
+  <h2><span class="icon" style="background:#ede9fe;color:#5b21b6;">📋</span> 逐阶段价值分解</h2>
+  <table id="phaseBreakdown">
+    <thead>
+      <tr>
+        <th>阶段</th>
+        <th class="text-right">投资成本</th>
+        <th class="text-right" style="color:var(--milestone);">里程碑收入</th>
+        <th class="text-right">净投资</th>
+        <th class="text-right">成功概率</th>
+        <th class="text-right">累计成功率</th>
+        <th class="text-right">阶段期权价值</th>
+        <th class="text-right">行权决策</th>
+      </tr>
+    </thead>
+    <tbody id="phaseBreakdownBody"></tbody>
+  </table>
+</div>
+
+<!-- ==================== 逐年现金流折现 ==================== -->
+<div class="section-title">逐年现金流折现明细</div>
+
+<div class="card">
+  <h2><span class="icon" style="background:#dbeafe;color:#1e40af;">📅</span> 逐年现金流时间线</h2>
+  <div class="info-tip">
+    展示从签约（Year 0）到商业化销售期间，每一年的名义现金流、折现因子和折现后现金流。投资成本在阶段开始时支出，里程碑付款在阶段成功完成时收取。商业化收入按WACC折现，开发期现金流按无风险利率折现。
+  </div>
+  <div style="overflow-x:auto;">
+    <table id="cashflowTable">
+      <thead>
+        <tr>
+          <th>年份</th>
+          <th>阶段</th>
+          <th class="text-right">投资成本</th>
+          <th class="text-right" style="color:var(--milestone);">里程碑收入</th>
+          <th class="text-right">商业化收入</th>
+          <th class="text-right">净现金流</th>
+          <th class="text-right">折现率</th>
+          <th class="text-right">折现因子</th>
+          <th class="text-right">折现后净现金流</th>
+          <th class="text-right">累计折现值</th>
+        </tr>
+      </thead>
+      <tbody id="cashflowBody"></tbody>
+      <tfoot id="cashflowFoot"></tfoot>
+    </table>
+  </div>
+</div>
+
+<!-- 现金流可视化 -->
+<div class="card">
+  <h2><span class="icon" style="background:#fce7f3;color:#be185d;">📊</span> 现金流瀑布图</h2>
+  <div id="cashflowChart" style="position:relative;height:340px;padding:10px;"></div>
+</div>
+
+<!-- ==================== 情景分析 ==================== -->
+<div class="section-title">情景分析</div>
+
+<div class="card">
+  <h2><span class="icon" style="background:#fce7f3;color:#be185d;">📈</span> 三情景对比</h2>
+  <div class="info-tip">
+    乐观情景：成功概率 +15%、峰值销售 +30%、里程碑收入 +20%；悲观情景：成功概率 -15%、峰值销售 -30%、里程碑收入 -20%。
+  </div>
+  <div class="grid-3" id="scenarioCards"></div>
+  <div style="margin-top:16px;">
+    <div class="bar-chart" id="scenarioChart"></div>
+  </div>
+</div>
+
+<!-- 关键假设 -->
+<div class="card">
+  <h2><span class="icon" style="background:#f1f5f9;color:#475569;">📝</span> 模型说明与关键假设</h2>
+  <div style="font-size:13px;color:var(--text-light);line-height:1.8;">
+    <p><strong>模型方法论：</strong>本模型将药物临床开发的每个阶段视为一个复合实物期权（Compound Option）。在每个临床阶段结束时，License持有方有权选择是否继续投资进入下一阶段（行权）或放弃（不行权）。每阶段成功后可获得里程碑付款收入。</p>
+    <p style="margin-top:8px;"><strong>里程碑付款处理：</strong>里程碑付款在该阶段临床试验成功完成时确认收入。在二叉树模型中，里程碑付款纳入成功节点的收益计算：阶段 i 的期权价值 = max[df × p × (V<sub>i+1</sub> + M<sub>i</sub>) − C<sub>i</sub>, 0]，其中 M<sub>i</sub> 为里程碑收入，C<sub>i</sub> 为投资成本。</p>
+    <p style="margin-top:8px;"><strong>折现方法：</strong>开发阶段的投资成本和里程碑付款使用无风险利率按实际年份折现（因技术风险已通过成功概率体现）。商业化阶段的销售收入使用WACC折现（含市场/商业风险）。逐年现金流表展示每笔现金流的精确折现过程。</p>
+    <p style="margin-top:8px;"><strong>rNPV对比：</strong>风险调整净现值（rNPV）将每阶段现金流（含里程碑收入）乘以累计成功概率再折现，不考虑放弃灵活性。实物期权价值与rNPV之差即为"灵活性溢价"。</p>
+  </div>
+</div>
+
+</div><!-- end resultsSection -->
+
+</div><!-- end container -->
+
+<div class="footer">
+  药物License交易实物期权估值模型 · 含里程碑付款与逐年折现 · 仅供分析参考，不构成投资建议
+</div>
+
+<script>
+// ============================================================
+// LOGIN
+// ============================================================
+const _k = '2002122zou';
+function tryLogin() {
+  const input = document.getElementById('pwdInput').value;
+  const card = document.getElementById('loginCard');
+  const err = document.getElementById('loginError');
+  if (input === _k) {
+    document.getElementById('loginOverlay').classList.add('fade-out');
+    setTimeout(() => { document.getElementById('loginOverlay').style.display = 'none'; }, 600);
+    err.textContent = '';
+  } else {
+    err.textContent = '密码错误，请重试';
+    card.classList.add('shake');
+    setTimeout(() => card.classList.remove('shake'), 450);
+    document.getElementById('pwdInput').value = '';
+    document.getElementById('pwdInput').focus();
+  }
+}
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('pwdInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') tryLogin();
+  });
+});
+
+// ============================================================
+// CORE MODEL
+// ============================================================
+
+function getParams() {
+  return {
+    phases: [
+      { name: '临床 I 期',  p: +document.getElementById('p1').value/100, cost: +document.getElementById('c1').value, milestone: +document.getElementById('m1').value, t: +document.getElementById('t1').value },
+      { name: '临床 II 期', p: +document.getElementById('p2').value/100, cost: +document.getElementById('c2').value, milestone: +document.getElementById('m2').value, t: +document.getElementById('t2').value },
+      { name: '临床 III 期',p: +document.getElementById('p3').value/100, cost: +document.getElementById('c3').value, milestone: +document.getElementById('m3').value, t: +document.getElementById('t3').value },
+      { name: 'FDA 审批',   p: +document.getElementById('p4').value/100, cost: +document.getElementById('c4').value, milestone: +document.getElementById('m4').value, t: +document.getElementById('t4').value },
+    ],
+    peakSales: +document.getElementById('peakSales').value,
+    salesYears: +document.getElementById('salesYears').value,
+    margin: +document.getElementById('margin').value / 100,
+    upfront: +document.getElementById('upfront').value,
+    rf: +document.getElementById('riskFreeRate').value / 100,
+    wacc: +document.getElementById('wacc').value / 100,
+    vol: +document.getElementById('volatility').value / 100,
+    curve: document.getElementById('growthCurve').value,
+  };
+}
+
+// Calculate PV of commercial sales (discounted at WACC from the point of FDA approval)
+function calcTerminalValue(params) {
+  const { peakSales, salesYears, margin, wacc, curve } = params;
+  let pv = 0;
+  for (let y = 1; y <= salesYears; y++) {
+    let salesFrac;
+    if (curve === 'linear') {
+      salesFrac = Math.min(y / (salesYears * 0.5), 1);
+    } else if (curve === 'scurve') {
+      salesFrac = 1 / (1 + Math.exp(-1.2 * (y - salesYears * 0.35)));
+    } else { // rapid
+      salesFrac = 1 - Math.exp(-0.8 * y);
+    }
+    const revenue = peakSales * salesFrac;
+    const profit = revenue * margin;
+    pv += profit / Math.pow(1 + wacc, y);
+  }
+  return pv;
+}
+
+// Get year-by-year commercial profits (not discounted)
+function getCommercialCashflows(params) {
+  const { peakSales, salesYears, margin, curve } = params;
+  const cfs = [];
+  for (let y = 1; y <= salesYears; y++) {
+    let salesFrac;
+    if (curve === 'linear') {
+      salesFrac = Math.min(y / (salesYears * 0.5), 1);
+    } else if (curve === 'scurve') {
+      salesFrac = 1 / (1 + Math.exp(-1.2 * (y - salesYears * 0.35)));
+    } else {
+      salesFrac = 1 - Math.exp(-0.8 * y);
+    }
+    cfs.push(peakSales * salesFrac * margin);
+  }
+  return cfs;
+}
+
+/*
+ * REAL OPTION with milestone payments
+ * Backward induction: at each stage i (going from last to first),
+ *   continuation_value = df * p * (stageValues[i+1] + milestone[i])
+ *   option_value = max(continuation_value - cost[i], 0)
+ *
+ * Milestone is received upon SUCCESS of that stage, so it is inside
+ * the probability-weighted branch (only received if stage succeeds).
+ */
+function calcRealOption(params) {
+  const { phases, rf, upfront } = params;
+  const TV = calcTerminalValue(params);
+
+  const n = phases.length;
+  const stageValues = new Array(n + 1);
+  const stageDecisions = new Array(n);
+  const stageContinuations = new Array(n);
+
+  stageValues[n] = TV; // terminal node value (PV of commercial cash flows at FDA approval)
+
+  // Backward induction
+  for (let i = n - 1; i >= 0; i--) {
+    const p = phases[i].p;
+    const cost = phases[i].cost;
+    const ms = phases[i].milestone;
+    const dt = phases[i].t;
+    const df = Math.exp(-rf * dt); // discount factor for this stage duration
+
+    // If stage succeeds: we get milestone + access to next stage value
+    // If stage fails: value = 0 (abandon)
+    const continuationValue = df * (p * (stageValues[i + 1] + ms));
+
+    // Option: can choose to invest (pay cost) or abandon (get 0)
+    const optionValue = Math.max(continuationValue - cost, 0);
+    stageValues[i] = optionValue;
+    stageContinuations[i] = continuationValue;
+    stageDecisions[i] = (continuationValue - cost > 0) ? 'invest' : 'abandon';
+  }
+
+  // ROV = Stage 0 option value minus upfront payment
+  const rov = stageValues[0] - upfront;
+
+  return { rov, stageValues, stageDecisions, stageContinuations, TV };
+}
+
+/*
+ * rNPV with milestone payments
+ * Standard rNPV: each cash flow weighted by cumulative probability of reaching that point
+ */
+function calcRNPV(params) {
+  const { phases, rf, wacc, upfront } = params;
+  const TV = calcTerminalValue(params);
+
+  let cumProb = 1;
+  let cumTime = 0;
+  let npv = -upfront; // upfront paid at t=0
+
+  for (let i = 0; i < phases.length; i++) {
+    // Cost paid at the START of this phase (cumTime is end of previous phase)
+    const costTime = cumTime;
+    npv -= phases[i].cost * cumProb / Math.pow(1 + rf, costTime);
+
+    // Phase duration passes
+    cumTime += phases[i].t;
+    cumProb *= phases[i].p;
+
+    // Milestone received at END of this phase (upon success)
+    npv += phases[i].milestone * cumProb / Math.pow(1 + rf, cumTime);
+  }
+
+  // Terminal value at end of all phases, discounted at WACC from t=0
+  // TV is already PV at FDA approval point, so we discount it back to t=0 at rf
+  npv += TV * cumProb / Math.pow(1 + rf, cumTime);
+
+  return npv;
+}
+
+// ============================================================
+// YEARLY CASH FLOW TABLE
+// ============================================================
+
+function buildYearlyCashflows(params) {
+  const { phases, rf, wacc, upfront } = params;
+  const rows = [];
+
+  // Year 0: upfront payment
+  rows.push({
+    year: 0, time: 0, phase: '签约',
+    cost: upfront, milestone: 0, commercial: 0,
+    net: -upfront,
+    rate: 0, df: 1, pv: -upfront
+  });
+
+  let cumTime = 0;
+
+  // Development phases
+  for (let i = 0; i < phases.length; i++) {
+    const ph = phases[i];
+
+    // Cost at start of phase
+    const costTime = cumTime;
+    const costDf = 1 / Math.pow(1 + rf, costTime);
+
+    // Milestone at end of phase (upon success)
+    const endTime = cumTime + ph.t;
+    const msDf = 1 / Math.pow(1 + rf, endTime);
+
+    // If cost and milestone happen at same integer year, combine; otherwise separate
+    // For simplicity, show cost at phase start time and milestone at phase end time
+    rows.push({
+      year: costTime, time: costTime, phase: ph.name + ' 开始',
+      cost: ph.cost, milestone: 0, commercial: 0,
+      net: -ph.cost,
+      rate: rf, df: costDf, pv: -ph.cost * costDf
+    });
+
+    rows.push({
+      year: endTime, time: endTime, phase: ph.name + ' 成功',
+      cost: 0, milestone: ph.milestone, commercial: 0,
+      net: ph.milestone,
+      rate: rf, df: msDf, pv: ph.milestone * msDf,
+      isMilestone: true
+    });
+
+    cumTime = endTime;
+  }
+
+  // Commercial phase: each year after FDA approval
+  const commercialCfs = getCommercialCashflows(params);
+  for (let y = 0; y < commercialCfs.length; y++) {
+    const absTime = cumTime + y + 1;
+    // Commercial revenue discounted at WACC from t=0
+    const df = 1 / Math.pow(1 + wacc, absTime);
+    rows.push({
+      year: absTime, time: absTime, phase: '商业化 Y' + (y+1),
+      cost: 0, milestone: 0, commercial: commercialCfs[y],
+      net: commercialCfs[y],
+      rate: wacc, df: df, pv: commercialCfs[y] * df,
+      isCommercial: true
+    });
+  }
+
+  return rows;
+}
+
+// ============================================================
+// SCENARIO ANALYSIS
+// ============================================================
+
+function buildScenarioParams(params, scenario) {
+  const sp = JSON.parse(JSON.stringify(params));
+  if (scenario === 'optimistic') {
+    sp.phases.forEach(ph => {
+      ph.p = Math.min(ph.p * 1.15, 0.99);
+      ph.milestone = ph.milestone * 1.2;
+    });
+    sp.peakSales *= 1.3;
+  } else if (scenario === 'pessimistic') {
+    sp.phases.forEach(ph => {
+      ph.p = Math.max(ph.p * 0.85, 0.05);
+      ph.milestone = ph.milestone * 0.8;
+    });
+    sp.peakSales *= 0.7;
+  }
+  return sp;
+}
+
+// ============================================================
+// RENDERING
+// ============================================================
+
+function fmtM(v) { return '$' + v.toFixed(1) + 'M'; }
+function fmtM2(v) { return (v >= 0 ? '+' : '') + '$' + v.toFixed(1) + 'M'; }
+
+function renderMetrics(params, result, rnpv) {
+  const cumProb = params.phases.reduce((a, ph) => a * ph.p, 1);
+  const totalCost = params.upfront + params.phases.reduce((a, ph) => a + ph.cost, 0);
+  const totalMilestones = params.phases.reduce((a, ph) => a + ph.milestone, 0);
+  const totalTime = params.phases.reduce((a, ph) => a + ph.t, 0);
+
+  document.getElementById('metricsRow').innerHTML = `
+    <div class="metric"><div class="num" style="color:var(--primary);">${(cumProb*100).toFixed(1)}%</div><div class="desc">累计成功概率</div></div>
+    <div class="metric"><div class="num" style="color:var(--danger);">${fmtM(totalCost)}</div><div class="desc">总投资成本</div></div>
+    <div class="metric"><div class="num" style="color:var(--milestone);">${fmtM(totalMilestones)}</div><div class="desc">总里程碑收入</div></div>
+    <div class="metric"><div class="num" style="color:var(--success);">${fmtM(result.TV)}</div><div class="desc">终端商业价值</div></div>
+    <div class="metric"><div class="num" style="color:var(--warning);">${totalTime.toFixed(1)}年</div><div class="desc">总开发周期</div></div>
+  `;
+}
+
+function renderTree(params, result) {
+  const phases = params.phases;
+  const sv = result.stageValues;
+  const sd = result.stageDecisions;
+  const n = phases.length;
+
+  const W = 960, H = 360;
+  const nodeW = 116, nodeH = 56;
+  const startX = 30;
+  const gapX = (W - startX - nodeW - 40) / n;
+  const midY = H / 2;
+
+  let svg = `<svg class="tree-svg" viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet">`;
+
+  const xPositions = [];
+  for (let i = 0; i <= n; i++) xPositions.push(startX + i * gapX);
+
+  // Draw connections
+  for (let i = 0; i < n; i++) {
+    const x1 = xPositions[i] + nodeW;
+    const x2 = xPositions[i+1];
+    const mx = (x1 + x2) / 2;
+
+    // Success line
+    svg += `<line x1="${x1}" y1="${midY}" x2="${x2}" y2="${midY}" stroke="#059669" stroke-width="2" ${sd[i]==='abandon'?'stroke-dasharray="5,5"':''}/>`;
+    // Fail line
+    svg += `<line x1="${x1}" y1="${midY}" x2="${x1+gapX*0.35}" y2="${midY+65}" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="4,4" opacity="0.5"/>`;
+
+    // Labels
+    svg += `<text x="${mx}" y="${midY-22}" text-anchor="middle" fill="#059669" font-size="11" font-weight="600">p=${(phases[i].p*100).toFixed(0)}%</text>`;
+    svg += `<text x="${mx}" y="${midY-10}" text-anchor="middle" fill="#64748b" font-size="10">成本: -$${phases[i].cost}M</text>`;
+    svg += `<text x="${mx}" y="${midY+14}" text-anchor="middle" fill="#7c3aed" font-size="10" font-weight="600">里程碑: +$${phases[i].milestone}M</text>`;
+
+    svg += `<text x="${x1+gapX*0.18}" y="${midY+82}" text-anchor="middle" fill="#dc2626" font-size="10" opacity="0.7">失败→放弃</text>`;
+    svg += `<text x="${x1+gapX*0.18}" y="${midY+94}" text-anchor="middle" fill="#dc2626" font-size="10" opacity="0.7">价值=$0</text>`;
+  }
+
+  // Draw nodes
+  const colors = ['#1a56db', '#1e40af', '#92400e', '#065f46', '#5b21b6'];
+  const bgColors = ['#e8eefb', '#dbeafe', '#fef3c7', '#d1fae5', '#ede9fe'];
+
+  for (let i = 0; i <= n; i++) {
+    const x = xPositions[i];
+    const y = midY - nodeH/2;
+    const bg = bgColors[i];
+    const clr = colors[i];
+    const label = i === 0 ? '期权价值' : i === n ? '终端价值' : phases[i-1].name;
+    const val = i === n ? result.TV : sv[i];
+
+    svg += `<rect x="${x}" y="${y}" width="${nodeW}" height="${nodeH}" rx="8" fill="${bg}" stroke="${clr}" stroke-width="1.5"/>`;
+    svg += `<text x="${x+nodeW/2}" y="${y+20}" text-anchor="middle" fill="${clr}" font-size="11" font-weight="600">${label}</text>`;
+    svg += `<text x="${x+nodeW/2}" y="${y+42}" text-anchor="middle" fill="${clr}" font-size="15" font-weight="800">$${val.toFixed(1)}M</text>`;
+  }
+
+  svg += `</svg>`;
+  document.getElementById('treeContainer').innerHTML = svg;
+}
+
+function renderPhaseBreakdown(params, result) {
+  const phases = params.phases;
+  const sv = result.stageValues;
+  const sd = result.stageDecisions;
+  let cumProb = 1;
+  let html = '';
+  const tagClasses = ['phase-1', 'phase-2', 'phase-3', 'phase-fda'];
+
+  for (let i = 0; i < phases.length; i++) {
+    cumProb *= phases[i].p;
+    const netInvest = phases[i].cost - phases[i].milestone;
+    const decision = sd[i] === 'invest'
+      ? '<span style="color:#059669;font-weight:600;">✓ 继续</span>'
+      : '<span style="color:#dc2626;font-weight:600;">✗ 放弃</span>';
+
+    html += `<tr>
+      <td><span class="phase-tag ${tagClasses[i]}">${phases[i].name}</span></td>
+      <td class="text-right cf-negative">-${fmtM(phases[i].cost)}</td>
+      <td class="text-right" style="color:var(--milestone);font-weight:600;">+${fmtM(phases[i].milestone)}</td>
+      <td class="text-right" style="font-weight:600;color:${netInvest>0?'var(--danger)':'var(--success)'};">${fmtM2(-netInvest)}</td>
+      <td class="text-right">${(phases[i].p*100).toFixed(0)}%</td>
+      <td class="text-right">${(cumProb*100).toFixed(1)}%</td>
+      <td class="text-right" style="font-weight:700;">${fmtM(sv[i])}</td>
+      <td class="text-right">${decision}</td>
+    </tr>`;
+  }
+
+  html += `<tr style="background:#f8fafc;font-weight:600;">
+    <td>商业化价值</td><td class="text-right">—</td><td class="text-right">—</td><td class="text-right">—</td><td class="text-right">—</td>
+    <td class="text-right">${(cumProb*100).toFixed(1)}%</td>
+    <td class="text-right" style="color:var(--success);">${fmtM(result.TV)}</td>
+    <td class="text-right">—</td>
+  </tr>`;
+
+  document.getElementById('phaseBreakdownBody').innerHTML = html;
+}
+
+function renderCashflowTable(params) {
+  const rows = buildYearlyCashflows(params);
+  let html = '';
+  let cumPV = 0;
+
+  rows.forEach(r => {
+    cumPV += r.pv;
+    const netClass = r.net >= 0 ? 'cf-positive' : 'cf-negative';
+    const pvClass = r.pv >= 0 ? 'cf-positive' : 'cf-negative';
+    const cumClass = cumPV >= 0 ? 'cf-positive' : 'cf-negative';
+    const rateName = r.rate === 0 ? '—' : (r.isCommercial ? 'WACC' : 'Rf') + ` ${(r.rate*100).toFixed(1)}%`;
+
+    html += `<tr${r.isMilestone ? ' style="background:#f5f3ff;"' : ''}${r.isCommercial ? '' : ''}>
+      <td style="font-weight:600;">Y${r.time.toFixed(1)}</td>
+      <td>${r.phase}</td>
+      <td class="text-right">${r.cost > 0 ? '<span class="cf-negative">-' + fmtM(r.cost) + '</span>' : '—'}</td>
+      <td class="text-right">${r.milestone > 0 ? '<span style="color:var(--milestone);font-weight:600;">+' + fmtM(r.milestone) + '</span>' : '—'}</td>
+      <td class="text-right">${r.commercial > 0 ? '<span class="cf-positive">+' + fmtM(r.commercial) + '</span>' : '—'}</td>
+      <td class="text-right ${netClass}">${fmtM2(r.net)}</td>
+      <td class="text-right cf-neutral">${rateName}</td>
+      <td class="text-right cf-neutral">${r.df.toFixed(4)}</td>
+      <td class="text-right ${pvClass}">${fmtM2(r.pv)}</td>
+      <td class="text-right ${cumClass}">${fmtM2(cumPV)}</td>
+    </tr>`;
+  });
+
+  document.getElementById('cashflowBody').innerHTML = html;
+
+  // Footer: totals
+  const totalCost = rows.reduce((a, r) => a + r.cost, 0);
+  const totalMs = rows.reduce((a, r) => a + r.milestone, 0);
+  const totalComm = rows.reduce((a, r) => a + r.commercial, 0);
+  const totalNet = rows.reduce((a, r) => a + r.net, 0);
+  const totalPV = rows.reduce((a, r) => a + r.pv, 0);
+
+  document.getElementById('cashflowFoot').innerHTML = `
+    <tr style="font-weight:700;background:#f0f9ff;border-top:2px solid var(--primary);">
+      <td colspan="2">合计（未加权）</td>
+      <td class="text-right cf-negative">-${fmtM(totalCost)}</td>
+      <td class="text-right" style="color:var(--milestone);">+${fmtM(totalMs)}</td>
+      <td class="text-right cf-positive">+${fmtM(totalComm)}</td>
+      <td class="text-right">${fmtM2(totalNet)}</td>
+      <td class="text-right">—</td>
+      <td class="text-right">—</td>
+      <td class="text-right" style="color:var(--primary);">${fmtM2(totalPV)}</td>
+      <td class="text-right">—</td>
+    </tr>`;
+}
+
+function renderCashflowChart(params) {
+  const rows = buildYearlyCashflows(params);
+  const container = document.getElementById('cashflowChart');
+
+  const W = 900, H = 320;
+  const pad = { t: 30, b: 50, l: 60, r: 30 };
+  const plotW = W - pad.l - pad.r;
+  const plotH = H - pad.t - pad.b;
+
+  // Filter to significant rows for chart clarity
+  const chartRows = rows.filter(r => Math.abs(r.pv) > 0.01);
+  const maxAbs = Math.max(...chartRows.map(r => Math.abs(r.pv))) * 1.15;
+  const barW = Math.min(plotW / chartRows.length * 0.7, 40);
+  const gap = plotW / chartRows.length;
+  const zeroY = pad.t + plotH / 2;
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:-apple-system,sans-serif;">`;
+
+  // Grid
+  svg += `<line x1="${pad.l}" y1="${zeroY}" x2="${W-pad.r}" y2="${zeroY}" stroke="#cbd5e1" stroke-width="1"/>`;
+  svg += `<text x="${pad.l-8}" y="${zeroY+4}" text-anchor="end" fill="#94a3b8" font-size="10">$0</text>`;
+
+  // Bars
+  chartRows.forEach((r, idx) => {
+    const x = pad.l + idx * gap + (gap - barW) / 2;
+    const h = Math.abs(r.pv) / maxAbs * (plotH / 2 - 10);
+
+    let barY, color;
+    if (r.pv >= 0) {
+      barY = zeroY - h;
+      color = r.isMilestone ? '#7c3aed' : (r.isCommercial ? '#059669' : '#3b82f6');
+    } else {
+      barY = zeroY;
+      color = '#dc2626';
+    }
+
+    svg += `<rect x="${x}" y="${barY}" width="${barW}" height="${h}" rx="2" fill="${color}" opacity="0.8"/>`;
+
+    // Value label (only for significant bars)
+    if (Math.abs(r.pv) > maxAbs * 0.05) {
+      const ly = r.pv >= 0 ? barY - 5 : barY + h + 12;
+      svg += `<text x="${x+barW/2}" y="${ly}" text-anchor="middle" fill="${color}" font-size="9" font-weight="600">${r.pv>=0?'+':''}${r.pv.toFixed(1)}</text>`;
+    }
+
+    // X label
+    svg += `<text x="${x+barW/2}" y="${H-pad.b+14}" text-anchor="middle" fill="#94a3b8" font-size="8" transform="rotate(-45 ${x+barW/2} ${H-pad.b+14})">${r.phase}</text>`;
+  });
+
+  // Legend
+  const legends = [
+    { color: '#dc2626', label: '投资成本' },
+    { color: '#7c3aed', label: '里程碑收入' },
+    { color: '#059669', label: '商业化收入' },
+  ];
+  legends.forEach((l, i) => {
+    const lx = pad.l + i * 120;
+    svg += `<rect x="${lx}" y="8" width="12" height="12" rx="2" fill="${l.color}" opacity="0.8"/>`;
+    svg += `<text x="${lx+16}" y="18" fill="#64748b" font-size="11">${l.label}</text>`;
+  });
+
+  svg += `</svg>`;
+  container.innerHTML = svg;
+}
+
+function renderScenarios(params) {
+  const scenarios = [
+    { key: 'optimistic', label: '乐观情景', color: '#059669', bg: '#d1fae5', icon: '📈' },
+    { key: 'base', label: '基准情景', color: '#1a56db', bg: '#dbeafe', icon: '📊' },
+    { key: 'pessimistic', label: '悲观情景', color: '#dc2626', bg: '#fee2e2', icon: '📉' },
+  ];
+
+  let cardsHtml = '';
+  let chartData = [];
+
+  scenarios.forEach(s => {
+    const sp = buildScenarioParams(params, s.key);
+    const result = calcRealOption(sp);
+    const rnpv = calcRNPV(sp);
+    const rov = result.rov;
+    chartData.push({ ...s, rov, rnpv });
+
+    const cumProb = sp.phases.reduce((a, ph) => a * ph.p, 1);
+    const totalMs = sp.phases.reduce((a, ph) => a + ph.milestone, 0);
+
+    cardsHtml += `
+      <div style="background:${s.bg};border-radius:12px;padding:20px;text-align:center;border:2px solid ${s.color}20;">
+        <div style="font-size:24px;">${s.icon}</div>
+        <div style="font-weight:700;color:${s.color};margin:8px 0;">${s.label}</div>
+        <div style="font-size:28px;font-weight:800;color:${s.color};">${fmtM(rov)}</div>
+        <div style="font-size:12px;color:#64748b;margin-top:4px;">实物期权价值</div>
+        <div style="margin-top:8px;font-size:13px;">rNPV: ${fmtM(rnpv)}</div>
+        <div style="font-size:12px;color:#64748b;">累计成功率: ${(cumProb*100).toFixed(1)}%</div>
+        <div style="font-size:12px;color:#64748b;">里程碑总额: ${fmtM(totalMs)}</div>
+        <div style="font-size:12px;color:#64748b;">峰值销售: $${sp.peakSales.toFixed(0)}M</div>
+      </div>`;
+  });
+
+  document.getElementById('scenarioCards').innerHTML = cardsHtml;
+
+  // Bar chart
+  const maxVal = Math.max(...chartData.map(d => Math.max(Math.abs(d.rov), Math.abs(d.rnpv))), 1);
+  const barH = 160;
+  let chartHtml = '';
+  chartData.forEach(d => {
+    const rovH = Math.max(Math.abs(d.rov) / maxVal * barH, 4);
+    const rnpvH = Math.max(Math.abs(d.rnpv) / maxVal * barH, 4);
+    chartHtml += `
+      <div class="bar-group">
+        <div class="bar-value" style="color:${d.color};">${fmtM(d.rov)}</div>
+        <div class="bar" style="height:${rovH}px;background:${d.color};"></div>
+        <div class="bar-label">${d.label}<br>ROV</div>
+      </div>
+      <div class="bar-group">
+        <div class="bar-value" style="color:${d.color}80;">${fmtM(d.rnpv)}</div>
+        <div class="bar" style="height:${rnpvH}px;background:${d.color}40;border:2px solid ${d.color};"></div>
+        <div class="bar-label">${d.label}<br>rNPV</div>
+      </div>`;
+  });
+  document.getElementById('scenarioChart').innerHTML = chartHtml;
+}
+
+// ============================================================
+// MAIN
+// ============================================================
+
+function runModel() {
+  const params = getParams();
+  const result = calcRealOption(params);
+  const rnpv = calcRNPV(params);
+  const flexibility = result.rov - rnpv;
+
+  // Show results
+  document.getElementById('resultsSection').classList.remove('hidden');
+
+  // Main values
+  document.getElementById('rovValue').textContent = fmtM(result.rov);
+  document.getElementById('rovSub').textContent = `灵活性溢价: ${fmtM(flexibility)} (${Math.abs(rnpv) > 0.01 ? ((flexibility/Math.abs(rnpv))*100).toFixed(0) : '∞'}%)`;
+  document.getElementById('rnpvValue').textContent = fmtM(rnpv);
+  document.getElementById('rnpvSub').textContent = `传统方法无放弃灵活性`;
+
+  // Render all sections
+  renderMetrics(params, result, rnpv);
+  renderTree(params, result);
+  renderPhaseBreakdown(params, result);
+  renderCashflowTable(params);
+  renderCashflowChart(params);
+  renderScenarios(params);
+
+  // Scroll to results
+  document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Auto-run on load
+window.addEventListener('DOMContentLoaded', runModel);
+</script>
+</body>
+</html>
